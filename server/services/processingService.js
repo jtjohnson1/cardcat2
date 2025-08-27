@@ -163,14 +163,17 @@ class ProcessingService {
 
         // Create actual card in database instead of just simulating
         try {
-          const cardData = await this.createCardFromBatch(batch, job.directory);
+          const cardData = await this.createCardFromBatch(batch, job.directory, jobId, i);
+          console.log('ProcessingService: Card data to be saved:', JSON.stringify(cardData, null, 2));
+          
           const newCard = new Card(cardData);
           await newCard.save();
-          
+
           job.createdCards.push(newCard._id);
           console.log(`ProcessingService: Created card in database: ${cardData.playerName} (ID: ${newCard._id})`);
         } catch (cardError) {
           console.error(`ProcessingService: Error creating card for batch ${batch}:`, cardError);
+          console.error('ProcessingService: Full error details:', cardError.stack);
           job.errors.push(`Failed to create card for batch ${batch}: ${cardError.message}`);
         }
 
@@ -194,7 +197,7 @@ class ProcessingService {
     }
   }
 
-  async createCardFromBatch(batchName, directory) {
+  async createCardFromBatch(batchName, directory, jobId, batchIndex) {
     // Generate mock card data based on batch name
     const batchNumber = batchName.match(/\d+/)?.[0] || '001';
     const lotName = batchName.split('-')[0] || 'lot1';
@@ -214,28 +217,33 @@ class ProcessingService {
     const sets = ['Series 1', 'Series 2', 'Chrome', 'Heritage', 'Stadium Club', 'Finest'];
     const conditions = ['Mint', 'Near Mint', 'Excellent', 'Very Good'];
     
-    const playerIndex = parseInt(batchNumber) % players.length;
-    const teamIndex = parseInt(batchNumber) % teams.length;
-    const manufacturerIndex = parseInt(batchNumber) % manufacturers.length;
-    const setIndex = parseInt(batchNumber) % sets.length;
+    // Use both batch index and job ID to ensure uniqueness
+    const uniqueIndex = (parseInt(batchNumber) + batchIndex + jobId.length) % players.length;
+    const playerIndex = uniqueIndex;
+    const teamIndex = uniqueIndex % teams.length;
+    const manufacturerIndex = uniqueIndex % manufacturers.length;
+    const setIndex = uniqueIndex % sets.length;
     
-    const year = 2020 + (parseInt(batchNumber) % 5); // Years 2020-2024
+    const year = 2020 + (uniqueIndex % 5); // Years 2020-2024
     
+    // Create a unique card number to avoid duplicates
+    const uniqueCardNumber = `${batchNumber}-${jobId.slice(-4)}-${batchIndex}`;
+
     return {
-      playerName: players[playerIndex],
+      playerName: `${players[playerIndex]} (${batchName})`, // Make player name unique
       team: teams[teamIndex],
       year: year,
       sport: 'Baseball',
       manufacturer: manufacturers[manufacturerIndex],
       set: `${year} ${manufacturers[manufacturerIndex]} ${sets[setIndex]}`,
-      cardNumber: batchNumber,
-      condition: conditions[parseInt(batchNumber) % conditions.length],
+      cardNumber: uniqueCardNumber,
+      condition: conditions[uniqueIndex % conditions.length],
       estimatedValue: Math.floor(Math.random() * 500) + 10, // $10-$510
       isRookie: Math.random() > 0.8, // 20% chance of rookie
       isGraded: Math.random() > 0.7, // 30% chance of graded
       frontImage: `${directory}/${batchName}-front.jpg`,
       backImage: `${directory}/${batchName}-back.jpg`,
-      notes: `Processed from batch ${batchName} in directory ${directory}`,
+      notes: `Processed from batch ${batchName} in directory ${directory} (Job: ${jobId})`,
       conditionScore: Math.floor(Math.random() * 30) + 70, // 70-100
       centeringScore: Math.floor(Math.random() * 30) + 70,
       cornersScore: Math.floor(Math.random() * 30) + 70,
