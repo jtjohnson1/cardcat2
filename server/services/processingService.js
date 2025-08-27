@@ -241,17 +241,18 @@ class ProcessingService {
 
   async analyzeImageWithOllama(imageBase64, side) {
     console.log(`ProcessingService: Sending ${side} image to Ollama for analysis`);
-    
+
     const ollamaEndpoint = process.env.OLLAMA_ENDPOINT || 'http://localhost:11434';
     const model = process.env.OLLAMA_MODEL || 'llava';
-    
-    console.log(`ProcessingService: Using Ollama endpoint: ${ollamaEndpoint}, model: ${model}`);
 
-    const prompt = side === 'front' 
+    console.log(`ProcessingService: Using Ollama endpoint: ${ollamaEndpoint}`);
+    console.log(`ProcessingService: Using Ollama model: ${model}`);
+
+    const prompt = side === 'front'
       ? `Analyze this trading card front image. Extract the following information in JSON format:
         {
           "playerName": "player name",
-          "team": "team name", 
+          "team": "team name",
           "year": "year",
           "sport": "sport type",
           "manufacturer": "card manufacturer",
@@ -264,7 +265,7 @@ class ProcessingService {
         {
           "condition": "card condition assessment",
           "conditionScore": "condition score 1-100",
-          "centeringScore": "centering score 1-100", 
+          "centeringScore": "centering score 1-100",
           "cornersScore": "corners score 1-100",
           "edgesScore": "edges score 1-100",
           "surfaceScore": "surface score 1-100",
@@ -272,17 +273,24 @@ class ProcessingService {
           "biography": "any biographical information"
         }`;
 
-    const response = await fetch(`${ollamaEndpoint}/api/generate`, {
+    const requestUrl = `${ollamaEndpoint}/api/generate`;
+    console.log(`ProcessingService: Making request to: ${requestUrl}`);
+
+    const requestBody = {
+      model: model,
+      prompt: prompt,
+      images: [imageBase64],
+      stream: false
+    };
+
+    console.log(`ProcessingService: Request body:`, JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(requestUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: model,
-        prompt: prompt,
-        images: [imageBase64],
-        stream: false
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {

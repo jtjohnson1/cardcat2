@@ -41,13 +41,13 @@ const cardResult = db.cards.deleteMany({});
 console.log('Deleted', cardResult.deletedCount, 'cards');
 
 // Delete any test collections
-const collections = db.listCollectionNames();
-console.log('Available collections:', collections);
+const collections = db.runCommand('listCollections').cursor.firstBatch;
+console.log('Available collections:', collections.map(c => c.name));
 
-collections.forEach(function(collName) {
-    if (collName.includes('test') || collName.includes('mock')) {
-        const result = db[collName].deleteMany({});
-        console.log('Deleted', result.deletedCount, 'documents from', collName);
+collections.forEach(function(coll) {
+    if (coll.name.includes('test') || coll.name.includes('mock')) {
+        const result = db[coll.name].deleteMany({});
+        console.log('Deleted', result.deletedCount, 'documents from', coll.name);
     }
 });
 
@@ -58,7 +58,7 @@ console.log('Cards after cleanup:', afterCount);
 if (afterCount === 0) {
     console.log('✅ Database successfully cleaned - no cards remaining');
 } else {
-    console.log('⚠️  Warning:', afterCount, 'cards still exist in database');
+    console.log('⚠️ Warning:', afterCount, 'cards still exist in database');
 }
 "
 
