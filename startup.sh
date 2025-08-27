@@ -5,7 +5,7 @@ echo "🚀 Starting CardCat Trading Card Management System..."
 # Check if MongoDB is running
 if ! pgrep -x "mongod" > /dev/null; then
     echo "❌ MongoDB is not running. Starting MongoDB..."
-    
+
     # Try to start MongoDB (different methods for different systems)
     if command -v brew &> /dev/null && brew services list | grep -q mongodb; then
         echo "📦 Starting MongoDB via Homebrew..."
@@ -23,7 +23,7 @@ if ! pgrep -x "mongod" > /dev/null; then
         echo "   - On Windows: net start MongoDB"
         exit 1
     fi
-    
+
     # Wait for MongoDB to start
     echo "⏳ Waiting for MongoDB to start..."
     sleep 3
@@ -42,20 +42,31 @@ else
     echo "✅ server/.env file already exists"
 fi
 
-# Install dependencies if node_modules don't exist
-if [ ! -d "node_modules" ]; then
-    echo "📦 Installing root dependencies..."
-    npm install
+# Always install/update dependencies to ensure all packages are present
+echo "📦 Installing/updating root dependencies..."
+npm install
+
+echo "📦 Installing/updating client dependencies..."
+cd client && npm install && cd ..
+
+echo "📦 Installing/updating server dependencies..."
+cd server && npm install && cd ..
+
+# Verify critical dependencies are installed
+echo "🔍 Verifying server dependencies..."
+if [ ! -d "server/node_modules/uuid" ]; then
+    echo "❌ uuid package missing, installing..."
+    cd server && npm install uuid && cd ..
 fi
 
-if [ ! -d "client/node_modules" ]; then
-    echo "📦 Installing client dependencies..."
-    cd client && npm install && cd ..
+if [ ! -d "server/node_modules/express" ]; then
+    echo "❌ express package missing, installing..."
+    cd server && npm install express && cd ..
 fi
 
-if [ ! -d "server/node_modules" ]; then
-    echo "📦 Installing server dependencies..."
-    cd server && npm install && cd ..
+if [ ! -d "server/node_modules/mongoose" ]; then
+    echo "❌ mongoose package missing, installing..."
+    cd server && npm install mongoose && cd ..
 fi
 
 echo "🎯 Starting CardCat application..."
