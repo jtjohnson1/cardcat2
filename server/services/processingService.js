@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 
 // In-memory storage for processing jobs (in production, use Redis or database)
@@ -10,44 +11,90 @@ class ProcessingService {
     try {
       console.log('ProcessingService: Getting directory contents for:', dirPath);
 
-      // Normalize the path
-      const normalizedPath = path.resolve(dirPath === '/' ? process.cwd() : dirPath);
-      
-      // Security check - ensure we're not going outside allowed directories
-      const allowedBasePath = process.cwd();
-      if (!normalizedPath.startsWith(allowedBasePath)) {
-        throw new Error('Access denied: Path outside allowed directory');
+      // Handle root path - allow actual filesystem root browsing
+      let normalizedPath;
+      if (dirPath === '/' || !dirPath) {
+        // Use actual filesystem root, not home directory
+        normalizedPath = '/';
+      } else {
+        // Handle absolute paths directly
+        if (path.isAbsolute(dirPath)) {
+          normalizedPath = path.resolve(dirPath);
+        } else {
+          // For relative paths, resolve from current working directory
+          normalizedPath = path.resolve(dirPath);
+        }
       }
 
-      const stats = await fs.stat(normalizedPath);
+      console.log('ProcessingService: Normalized path:', normalizedPath);
+
+      // Security check - ensure the path exists and is accessible
+      let stats;
+      try {
+        stats = await fs.stat(normalizedPath);
+      } catch (error) {
+        console.error('ProcessingService: Path not accessible:', normalizedPath, error.message);
+        // If path is not accessible, try fallback to root or home
+        if (normalizedPath !== '/') {
+          normalizedPath = '/';
+          try {
+            stats = await fs.stat(normalizedPath);
+          } catch (rootError) {
+            // If root is not accessible, fallback to home directory
+            normalizedPath = os.homedir();
+            stats = await fs.stat(normalizedPath);
+          }
+        } else {
+          // If root is not accessible, fallback to home directory
+          normalizedPath = os.homedir();
+          stats = await fs.stat(normalizedPath);
+        }
+      }
+
       if (!stats.isDirectory()) {
         throw new Error('Path is not a directory');
       }
 
       const entries = await fs.readdir(normalizedPath, { withFileTypes: true });
-      
-      const contents = entries.map(entry => {
-        const fullPath = path.join(normalizedPath, entry.name);
-        const relativePath = path.relative(process.cwd(), fullPath);
-        
-        return {
-          name: entry.name,
-          type: entry.isDirectory() ? 'directory' : 'file',
-          path: relativePath || '.',
-          fullPath: fullPath,
-          isImage: entry.isFile() && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(entry.name)
-        };
-      });
 
-      // Sort: directories first, then files
+      const contents = entries
+        .filter(entry => {
+          // Show all files and directories, including hidden ones
+          // Don't filter out any files based on name
+          return true;
+        })
+        .map(entry => {
+          const fullPath = path.join(normalizedPath, entry.name);
+
+          return {
+            name: entry.name,
+            type: entry.isDirectory() ? 'directory' : 'file',
+            path: fullPath,
+            fullPath: fullPath,
+            isImage: entry.isFile() && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(entry.name),
+            isHidden: entry.name.startsWith('.')
+          };
+        });
+
+      // Sort: directories first, then files, with hidden items at the end within each category
       contents.sort((a, b) => {
+        // First sort by type (directories first)
         if (a.type !== b.type) {
           return a.type === 'directory' ? -1 : 1;
         }
+        
+        // Then sort by hidden status (non-hidden first)
+        if (a.isHidden !== b.isHidden) {
+          return a.isHidden ? 1 : -1;
+        }
+        
+        // Finally sort alphabetically
         return a.name.localeCompare(b.name);
       });
 
-      console.log(`ProcessingService: Found ${contents.length} items in directory`);
+      console.log(`ProcessingService: Found ${contents.length} items in directory ${normalizedPath}`);
+      console.log(`ProcessingService: Items breakdown - Directories: ${contents.filter(c => c.type === 'directory').length}, Files: ${contents.filter(c => c.type === 'file').length}, Hidden: ${contents.filter(c => c.isHidden).length}`);
+      
       return contents;
     } catch (error) {
       console.error('ProcessingService: Error getting directory contents:', error);
@@ -60,7 +107,7 @@ class ProcessingService {
       console.log('ProcessingService: Starting processing for batches:', batches);
 
       const jobId = uuidv4();
-      
+
       // Create processing job
       const job = {
         id: jobId,
@@ -183,7 +230,7 @@ class ProcessingService {
         console.log('ProcessingService: Getting overall processing status');
         const jobs = Array.from(processingJobs.values());
         const activeJobs = jobs.filter(job => job.status === 'running' || job.status === 'paused');
-        
+
         return {
           activeJobs: activeJobs.length,
           totalJobs: jobs.length,

@@ -27,16 +27,12 @@ export function Dashboard() {
         getRecentActivity()
       ])
 
-      console.log('Dashboard stats:', statsResponse)
-      console.log('Dashboard activity:', activityResponse)
+      console.log('Dashboard stats response:', statsResponse)
+      console.log('Dashboard activity response:', activityResponse)
 
-      if (statsResponse.success) {
-        setStats(statsResponse)
-      }
-
-      if (activityResponse.success) {
-        setActivities(activityResponse.activities || [])
-      }
+      // The backend returns data directly in the response, not nested under success
+      setStats(statsResponse)
+      setActivities(activityResponse.activities || [])
     } catch (error) {
       console.error('Error loading dashboard data:', error)
       toast({
