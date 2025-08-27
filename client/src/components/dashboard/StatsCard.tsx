@@ -8,6 +8,8 @@ interface StatsCardProps {
 }
 
 export function StatsCard({ title, value, icon, trend }: StatsCardProps) {
+  console.log('StatsCard: Rendering with props:', { title, value, trend })
+  
   return (
     <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-gray-200/50 dark:border-gray-700/50">
       <CardContent className="p-6">

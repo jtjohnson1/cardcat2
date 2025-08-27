@@ -19,33 +19,52 @@ export function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
-      console.log('Loading dashboard data...')
+      console.log('Dashboard: Starting to load dashboard data...')
       setLoading(true)
 
+      console.log('Dashboard: Making API calls...')
       const [statsResponse, activityResponse] = await Promise.all([
         getDashboardStats(),
         getRecentActivity()
       ])
 
-      console.log('Dashboard stats response:', statsResponse)
-      console.log('Dashboard activity response:', activityResponse)
+      console.log('Dashboard: Raw stats response:', statsResponse)
+      console.log('Dashboard: Raw activity response:', activityResponse)
+      console.log('Dashboard: Stats response type:', typeof statsResponse)
+      console.log('Dashboard: Activity response type:', typeof activityResponse)
+      console.log('Dashboard: Stats response keys:', Object.keys(statsResponse || {}))
+      console.log('Dashboard: Activity response keys:', Object.keys(activityResponse || {}))
 
       // The backend returns data directly in the response, not nested under success
+      console.log('Dashboard: Setting stats to:', statsResponse)
       setStats(statsResponse)
+      
+      console.log('Dashboard: Activity response activities:', activityResponse.activities)
       setActivities(activityResponse.activities || [])
+      
+      console.log('Dashboard: Final stats state will be:', statsResponse)
+      console.log('Dashboard: Final activities state will be:', activityResponse.activities || [])
     } catch (error) {
-      console.error('Error loading dashboard data:', error)
+      console.error('Dashboard: Error loading dashboard data:', error)
+      console.error('Dashboard: Error stack:', error.stack)
       toast({
         title: "Error",
         description: "Failed to load dashboard data",
         variant: "destructive",
       })
     } finally {
+      console.log('Dashboard: Setting loading to false')
       setLoading(false)
     }
   }
 
+  console.log('Dashboard: Render - loading:', loading)
+  console.log('Dashboard: Render - stats:', stats)
+  console.log('Dashboard: Render - activities:', activities)
+  console.log('Dashboard: Render - stats totalCards:', stats?.totalCards)
+
   if (loading) {
+    console.log('Dashboard: Rendering loading state')
     return (
       <div className="space-y-6">
         <div>
@@ -70,6 +89,7 @@ export function Dashboard() {
     )
   }
 
+  console.log('Dashboard: Rendering main content')
   return (
     <div className="space-y-6">
       <div>
