@@ -1,17 +1,15 @@
 {
   "name": "CardCat",
   "version": "1.0.0",
-  "description": "Trading Card Management System",
+  "description": "Trading Card Management System with AI-powered image recognition",
   "main": "index.js",
   "scripts": {
     "start": "concurrently -n \"client,server\" \"npm run client\" \"npm run server\"",
     "client": "cd client && npm run dev",
     "server": "cd server && npm run dev",
-    "build": "cd client && npm run build",
-    "install-all": "npm install && cd client && npm install && cd ../server && npm install",
-    "clean": "rm -rf node_modules client/node_modules server/node_modules"
+    "clean-db": "./clean-database.sh"
   },
-  "keywords": ["trading-cards", "inventory", "management"],
+  "keywords": ["trading cards", "AI", "image recognition", "inventory management"],
   "author": "",
   "license": "ISC",
   "devDependencies": {
