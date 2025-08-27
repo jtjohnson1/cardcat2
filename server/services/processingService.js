@@ -161,10 +161,10 @@ class ProcessingService {
 
         console.log(`ProcessingService: Processing batch ${batch} (${i + 1}/${job.totalItems})`);
 
-        // Create actual card in database instead of just simulating
+        // Create actual card in database using Ollama AI analysis - NO FALLBACKS
         try {
-          const cardData = await this.createCardFromBatch(batch, job.directory, jobId, i);
-          console.log('ProcessingService: Card data to be saved:', JSON.stringify(cardData, null, 2));
+          const cardData = await this.createCardFromBatchWithOllama(batch, job.directory, jobId, i);
+          console.log('ProcessingService: Card data from Ollama analysis:', JSON.stringify(cardData, null, 2));
           
           const newCard = new Card(cardData);
           await newCard.save();
@@ -175,6 +175,7 @@ class ProcessingService {
           console.error(`ProcessingService: Error creating card for batch ${batch}:`, cardError);
           console.error('ProcessingService: Full error details:', cardError.stack);
           job.errors.push(`Failed to create card for batch ${batch}: ${cardError.message}`);
+          // DO NOT CREATE MOCK DATA - LET IT FAIL
         }
 
         // Simulate processing time (reduced for faster testing)
@@ -197,58 +198,146 @@ class ProcessingService {
     }
   }
 
-  async createCardFromBatch(batchName, directory, jobId, batchIndex) {
-    // Generate mock card data based on batch name
-    const batchNumber = batchName.match(/\d+/)?.[0] || '001';
-    const lotName = batchName.split('-')[0] || 'lot1';
+  async createCardFromBatchWithOllama(batchName, directory, jobId, batchIndex) {
+    console.log(`ProcessingService: Analyzing card images for batch ${batchName} using Ollama`);
     
-    // Sample player names and teams for variety
-    const players = [
-      'Mike Trout', 'Mookie Betts', 'Aaron Judge', 'Ronald Acuña Jr.', 'Juan Soto',
-      'Fernando Tatis Jr.', 'Manny Machado', 'Bryce Harper', 'Freddie Freeman', 'Vladimir Guerrero Jr.'
-    ];
+    const frontImagePath = path.join(directory, `${batchName}-front.jpg`);
+    const backImagePath = path.join(directory, `${batchName}-back.jpg`);
     
-    const teams = [
-      'Los Angeles Angels', 'Los Angeles Dodgers', 'New York Yankees', 'Atlanta Braves', 'San Diego Padres',
-      'Philadelphia Phillies', 'Toronto Blue Jays', 'Houston Astros', 'Tampa Bay Rays', 'Boston Red Sox'
-    ];
+    console.log(`ProcessingService: Front image path: ${frontImagePath}`);
+    console.log(`ProcessingService: Back image path: ${backImagePath}`);
+
+    // Check if image files exist
+    try {
+      await fs.access(frontImagePath);
+      await fs.access(backImagePath);
+      console.log(`ProcessingService: Both image files exist for batch ${batchName}`);
+    } catch (error) {
+      console.error(`ProcessingService: Image files not found for batch ${batchName}:`, error.message);
+      throw new Error(`Image files not found: ${error.message}`);
+    }
+
+    // Read image files as base64
+    const frontImageBuffer = await fs.readFile(frontImagePath);
+    const backImageBuffer = await fs.readFile(backImagePath);
+    const frontImageBase64 = frontImageBuffer.toString('base64');
+    const backImageBase64 = backImageBuffer.toString('base64');
+
+    console.log(`ProcessingService: Read image files, front: ${frontImageBuffer.length} bytes, back: ${backImageBuffer.length} bytes`);
+
+    // Analyze front image with Ollama
+    const frontAnalysis = await this.analyzeImageWithOllama(frontImageBase64, 'front');
+    console.log(`ProcessingService: Front image analysis:`, frontAnalysis);
+
+    // Analyze back image with Ollama
+    const backAnalysis = await this.analyzeImageWithOllama(backImageBase64, 'back');
+    console.log(`ProcessingService: Back image analysis:`, backAnalysis);
+
+    // Combine analysis results into card data
+    const cardData = this.combineAnalysisResults(frontAnalysis, backAnalysis, batchName, directory, jobId, batchIndex);
     
-    const manufacturers = ['Topps', 'Panini', 'Upper Deck', 'Bowman', 'Donruss'];
-    const sets = ['Series 1', 'Series 2', 'Chrome', 'Heritage', 'Stadium Club', 'Finest'];
-    const conditions = ['Mint', 'Near Mint', 'Excellent', 'Very Good'];
+    return cardData;
+  }
+
+  async analyzeImageWithOllama(imageBase64, side) {
+    console.log(`ProcessingService: Sending ${side} image to Ollama for analysis`);
     
-    // Use both batch index and job ID to ensure uniqueness
-    const uniqueIndex = (parseInt(batchNumber) + batchIndex + jobId.length) % players.length;
-    const playerIndex = uniqueIndex;
-    const teamIndex = uniqueIndex % teams.length;
-    const manufacturerIndex = uniqueIndex % manufacturers.length;
-    const setIndex = uniqueIndex % sets.length;
+    const ollamaEndpoint = process.env.OLLAMA_ENDPOINT || 'http://localhost:11434';
+    const model = process.env.OLLAMA_MODEL || 'llava';
     
-    const year = 2020 + (uniqueIndex % 5); // Years 2020-2024
+    console.log(`ProcessingService: Using Ollama endpoint: ${ollamaEndpoint}, model: ${model}`);
+
+    const prompt = side === 'front' 
+      ? `Analyze this trading card front image. Extract the following information in JSON format:
+        {
+          "playerName": "player name",
+          "team": "team name", 
+          "year": "year",
+          "sport": "sport type",
+          "manufacturer": "card manufacturer",
+          "set": "card set name",
+          "cardNumber": "card number",
+          "isRookie": "true/false if rookie card",
+          "specialFeatures": "any special features or parallel designations"
+        }`
+      : `Analyze this trading card back image. Extract the following information in JSON format:
+        {
+          "condition": "card condition assessment",
+          "conditionScore": "condition score 1-100",
+          "centeringScore": "centering score 1-100", 
+          "cornersScore": "corners score 1-100",
+          "edgesScore": "edges score 1-100",
+          "surfaceScore": "surface score 1-100",
+          "stats": "any visible player statistics",
+          "biography": "any biographical information"
+        }`;
+
+    const response = await fetch(`${ollamaEndpoint}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: model,
+        prompt: prompt,
+        images: [imageBase64],
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`ProcessingService: Ollama ${side} analysis raw response:`, result);
+
+    // Try to parse JSON from the response
+    try {
+      const jsonMatch = result.response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsedData = JSON.parse(jsonMatch[0]);
+        console.log(`ProcessingService: Parsed ${side} analysis:`, parsedData);
+        return parsedData;
+      } else {
+        console.log(`ProcessingService: No JSON found in ${side} response, using text analysis`);
+        return { rawText: result.response };
+      }
+    } catch (parseError) {
+      console.error(`ProcessingService: Error parsing ${side} JSON:`, parseError);
+      return { rawText: result.response };
+    }
+  }
+
+  combineAnalysisResults(frontAnalysis, backAnalysis, batchName, directory, jobId, batchIndex) {
+    console.log(`ProcessingService: Combining analysis results for batch ${batchName}`);
     
-    // Create a unique card number to avoid duplicates
-    const uniqueCardNumber = `${batchNumber}-${jobId.slice(-4)}-${batchIndex}`;
+    // Create unique card number to avoid duplicates
+    const uniqueCardNumber = `${batchName}-${jobId.slice(-4)}-${batchIndex}`;
 
     return {
-      playerName: `${players[playerIndex]} (${batchName})`, // Make player name unique
-      team: teams[teamIndex],
-      year: year,
-      sport: 'Baseball',
-      manufacturer: manufacturers[manufacturerIndex],
-      set: `${year} ${manufacturers[manufacturerIndex]} ${sets[setIndex]}`,
-      cardNumber: uniqueCardNumber,
-      condition: conditions[uniqueIndex % conditions.length],
-      estimatedValue: Math.floor(Math.random() * 500) + 10, // $10-$510
-      isRookie: Math.random() > 0.8, // 20% chance of rookie
-      isGraded: Math.random() > 0.7, // 30% chance of graded
+      playerName: frontAnalysis.playerName || `Unknown Player (${batchName})`,
+      team: frontAnalysis.team || 'Unknown Team',
+      year: parseInt(frontAnalysis.year) || new Date().getFullYear(),
+      sport: frontAnalysis.sport || 'Baseball',
+      manufacturer: frontAnalysis.manufacturer || 'Unknown Manufacturer',
+      set: frontAnalysis.set || 'Unknown Set',
+      cardNumber: frontAnalysis.cardNumber || uniqueCardNumber,
+      condition: backAnalysis.condition || 'Near Mint',
+      estimatedValue: 0, // No random values - will be determined by market analysis later
+      isRookie: frontAnalysis.isRookie === 'true' || frontAnalysis.isRookie === true,
+      isGraded: false, // Will be determined by condition analysis
       frontImage: `${directory}/${batchName}-front.jpg`,
       backImage: `${directory}/${batchName}-back.jpg`,
-      notes: `Processed from batch ${batchName} in directory ${directory} (Job: ${jobId})`,
-      conditionScore: Math.floor(Math.random() * 30) + 70, // 70-100
-      centeringScore: Math.floor(Math.random() * 30) + 70,
-      cornersScore: Math.floor(Math.random() * 30) + 70,
-      edgesScore: Math.floor(Math.random() * 30) + 70,
-      surfaceScore: Math.floor(Math.random() * 30) + 70
+      notes: `Processed from batch ${batchName} using Ollama AI analysis (Job: ${jobId})`,
+      conditionScore: parseInt(backAnalysis.conditionScore) || 0,
+      centeringScore: parseInt(backAnalysis.centeringScore) || 0,
+      cornersScore: parseInt(backAnalysis.cornersScore) || 0,
+      edgesScore: parseInt(backAnalysis.edgesScore) || 0,
+      surfaceScore: parseInt(backAnalysis.surfaceScore) || 0,
+      // Store raw analysis for debugging
+      frontAnalysisRaw: frontAnalysis.rawText || JSON.stringify(frontAnalysis),
+      backAnalysisRaw: backAnalysis.rawText || JSON.stringify(backAnalysis)
     };
   }
 
