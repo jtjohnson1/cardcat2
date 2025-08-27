@@ -2,6 +2,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
+const Card = require('../models/Card');
 
 // In-memory storage for processing jobs (in production, use Redis or database)
 const processingJobs = new Map();
@@ -120,12 +121,13 @@ class ProcessingService {
         currentItem: null,
         errors: [],
         startTime: new Date(),
-        estimatedTimeRemaining: null
+        estimatedTimeRemaining: null,
+        createdCards: []
       };
 
       processingJobs.set(jobId, job);
 
-      // Start processing in background (simulate processing)
+      // Start processing in background
       this.processInBackground(jobId);
 
       console.log('ProcessingService: Processing job started with ID:', jobId);
@@ -157,10 +159,25 @@ class ProcessingService {
         job.processedItems = i;
         job.progress = Math.round((i / job.totalItems) * 100);
 
-        // Simulate processing time
-        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
+        console.log(`ProcessingService: Processing batch ${batch} (${i + 1}/${job.totalItems})`);
 
-        console.log(`ProcessingService: Processed batch ${batch} (${i + 1}/${job.totalItems})`);
+        // Create actual card in database instead of just simulating
+        try {
+          const cardData = await this.createCardFromBatch(batch, job.directory);
+          const newCard = new Card(cardData);
+          await newCard.save();
+          
+          job.createdCards.push(newCard._id);
+          console.log(`ProcessingService: Created card in database: ${cardData.playerName} (ID: ${newCard._id})`);
+        } catch (cardError) {
+          console.error(`ProcessingService: Error creating card for batch ${batch}:`, cardError);
+          job.errors.push(`Failed to create card for batch ${batch}: ${cardError.message}`);
+        }
+
+        // Simulate processing time (reduced for faster testing)
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+
+        console.log(`ProcessingService: Completed batch ${batch} (${i + 1}/${job.totalItems})`);
       }
 
       job.status = 'completed';
@@ -169,12 +186,62 @@ class ProcessingService {
       job.currentItem = null;
       job.endTime = new Date();
 
-      console.log('ProcessingService: Processing completed for job:', jobId);
+      console.log(`ProcessingService: Processing completed for job: ${jobId}. Created ${job.createdCards.length} cards.`);
     } catch (error) {
       console.error('ProcessingService: Error during processing:', error);
       job.status = 'error';
       job.errors.push(error.message);
     }
+  }
+
+  async createCardFromBatch(batchName, directory) {
+    // Generate mock card data based on batch name
+    const batchNumber = batchName.match(/\d+/)?.[0] || '001';
+    const lotName = batchName.split('-')[0] || 'lot1';
+    
+    // Sample player names and teams for variety
+    const players = [
+      'Mike Trout', 'Mookie Betts', 'Aaron Judge', 'Ronald Acuña Jr.', 'Juan Soto',
+      'Fernando Tatis Jr.', 'Manny Machado', 'Bryce Harper', 'Freddie Freeman', 'Vladimir Guerrero Jr.'
+    ];
+    
+    const teams = [
+      'Los Angeles Angels', 'Los Angeles Dodgers', 'New York Yankees', 'Atlanta Braves', 'San Diego Padres',
+      'Philadelphia Phillies', 'Toronto Blue Jays', 'Houston Astros', 'Tampa Bay Rays', 'Boston Red Sox'
+    ];
+    
+    const manufacturers = ['Topps', 'Panini', 'Upper Deck', 'Bowman', 'Donruss'];
+    const sets = ['Series 1', 'Series 2', 'Chrome', 'Heritage', 'Stadium Club', 'Finest'];
+    const conditions = ['Mint', 'Near Mint', 'Excellent', 'Very Good'];
+    
+    const playerIndex = parseInt(batchNumber) % players.length;
+    const teamIndex = parseInt(batchNumber) % teams.length;
+    const manufacturerIndex = parseInt(batchNumber) % manufacturers.length;
+    const setIndex = parseInt(batchNumber) % sets.length;
+    
+    const year = 2020 + (parseInt(batchNumber) % 5); // Years 2020-2024
+    
+    return {
+      playerName: players[playerIndex],
+      team: teams[teamIndex],
+      year: year,
+      sport: 'Baseball',
+      manufacturer: manufacturers[manufacturerIndex],
+      set: `${year} ${manufacturers[manufacturerIndex]} ${sets[setIndex]}`,
+      cardNumber: batchNumber,
+      condition: conditions[parseInt(batchNumber) % conditions.length],
+      estimatedValue: Math.floor(Math.random() * 500) + 10, // $10-$510
+      isRookie: Math.random() > 0.8, // 20% chance of rookie
+      isGraded: Math.random() > 0.7, // 30% chance of graded
+      frontImage: `${directory}/${batchName}-front.jpg`,
+      backImage: `${directory}/${batchName}-back.jpg`,
+      notes: `Processed from batch ${batchName} in directory ${directory}`,
+      conditionScore: Math.floor(Math.random() * 30) + 70, // 70-100
+      centeringScore: Math.floor(Math.random() * 30) + 70,
+      cornersScore: Math.floor(Math.random() * 30) + 70,
+      edgesScore: Math.floor(Math.random() * 30) + 70,
+      surfaceScore: Math.floor(Math.random() * 30) + 70
+    };
   }
 
   async pauseProcessing(jobId) {
