@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "clean-db": "node scripts/cleanDatabase.js"
   },
   "keywords": [],
   "author": "",

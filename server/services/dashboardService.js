@@ -79,7 +79,7 @@ class DashboardService {
         .limit(10)
         .select('playerName team year manufacturer createdAt');
 
-      // Convert to activity format
+      // Convert to activity format - only if cards exist
       const activities = recentCards.map(card => ({
         id: card._id.toString(),
         type: 'card_added',
