@@ -8,7 +8,9 @@ interface StatsCardProps {
 }
 
 export function StatsCard({ title, value, icon, trend }: StatsCardProps) {
-  console.log('StatsCard: Rendering with props:', { title, value, trend })
+  // Ensure we have safe values to prevent rendering errors
+  const safeTitle = title || 'Unknown'
+  const safeValue = value !== undefined && value !== null ? value : 'N/A'
   
   return (
     <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-gray-200/50 dark:border-gray-700/50">
@@ -16,10 +18,10 @@ export function StatsCard({ title, value, icon, trend }: StatsCardProps) {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              {title}
+              {safeTitle}
             </p>
             <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {value}
+              {safeValue}
             </p>
             {trend && (
               <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
